@@ -156,6 +156,6 @@ struct DebugSnapshot: Sendable {
     var lastLatency: TimeInterval = 0
     var rollingWindowSeconds: TimeInterval = 0
     var candidateSummary: [String] = []
-    var modelLocation: String = "Model not bundled"
+    var modelLocation: String = "Model klasoru eklenmedi"
     var lastError: String?
 }

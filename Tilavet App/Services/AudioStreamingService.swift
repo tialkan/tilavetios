@@ -17,11 +17,11 @@ enum AudioStreamingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
-            return "Microphone access is required to follow recitation."
+            return "Tilaveti takip etmek icin mikrofon izni gerekli."
         case .noInputDevice:
-            return "No microphone input is available on this device."
+            return "Bu cihazda kullanilabilir mikrofon girisi bulunamadi."
         case .converterUnavailable:
-            return "Audio conversion to 16 kHz failed."
+            return "Ses 16 kHz formatina donusturulemedi."
         }
     }
 }

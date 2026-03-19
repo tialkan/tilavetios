@@ -1,37 +1,40 @@
 import SwiftUI
 
+private enum TilavetSheet: String, Identifiable {
+    case history
+    case settings
+    case startPoint
+
+    var id: String { rawValue }
+}
+
 struct ContentView: View {
     @ObservedObject var viewModel: TrackerViewModel
-    @State private var showingStartPointPicker = false
+    @State private var activeSheet: TilavetSheet?
 
     var body: some View {
-        TabView {
-            NavigationStack {
-                TrackerDashboardView(
-                    viewModel: viewModel,
-                    showingStartPointPicker: $showingStartPointPicker
-                )
-            }
-            .tabItem {
-                Label("Takip", systemImage: "waveform.badge.mic")
-            }
+        NavigationStack {
+            TrackerDashboardView(viewModel: viewModel, activeSheet: $activeSheet)
+        }
+        .sheet(item: $activeSheet) { sheet in
+            sheetContent(for: sheet)
+        }
+    }
 
+    @ViewBuilder
+    private func sheetContent(for sheet: TilavetSheet) -> some View {
+        switch sheet {
+        case .history:
             NavigationStack {
                 HistoryView(viewModel: viewModel)
             }
-            .tabItem {
-                Label("Oturumlar", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-            }
-
+            .presentationDetents([.medium, .large])
+        case .settings:
             NavigationStack {
                 SettingsView(viewModel: viewModel, settingsStore: viewModel.settingsStore)
             }
-            .tabItem {
-                Label("Ayarlar", systemImage: "slider.horizontal.3")
-            }
-        }
-        .tint(Color("AccentColor"))
-        .sheet(isPresented: $showingStartPointPicker) {
+            .presentationDetents([.medium, .large])
+        case .startPoint:
             StartPointPickerView(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
         }
@@ -40,119 +43,134 @@ struct ContentView: View {
 
 private struct TrackerDashboardView: View {
     @ObservedObject var viewModel: TrackerViewModel
-    @Binding var showingStartPointPicker: Bool
+    @Binding var activeSheet: TilavetSheet?
 
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(red: 0.96, green: 0.93, blue: 0.86), Color(red: 0.90, green: 0.82, blue: 0.65)],
+                colors: [Color(red: 0.97, green: 0.95, blue: 0.90), Color(red: 0.89, green: 0.83, blue: 0.68)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
-                    statusCard
-                    teleprompterCard
-                    controlsCard
-                    if viewModel.settingsStore.showDebugPanel {
-                        debugCard
-                    }
+            VStack(spacing: 18) {
+                header
+                verseStage
+                actionStage
+
+                if viewModel.settingsStore.showDebugPanel {
+                    debugCard
                 }
-                .padding(20)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Ayet sec") {
+                        activeSheet = .startPoint
+                    }
+
+                    Button("Oturumlar") {
+                        activeSheet = .history
+                    }
+
+                    Button("Ayarlar") {
+                        activeSheet = .settings
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.74))
+                }
+                .accessibilityIdentifier("Tilavet.MoreMenu")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Tilavet")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.85))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.84))
+                .accessibilityIdentifier("Tilavet.Header")
 
-            Text("Ayet ve kelime takibini cihaz icinde surdurur.")
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.65))
-        }
-    }
+            HStack(spacing: 10) {
+                StatusPill(
+                    title: listeningTitle,
+                    icon: viewModel.isTracking ? "waveform" : "mic",
+                    color: listeningColor
+                )
 
-    private var statusCard: some View {
-        SurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    StatusChip(title: "Mic", value: microphoneLabel, color: microphoneColor)
-                    StatusChip(title: "Model", value: viewModel.modelState.label, color: modelColor)
-                    Spacer()
-                }
+                StatusPill(
+                    title: "Konum \(viewModel.trackingState.surahID):\(viewModel.trackingState.ayahID)",
+                    icon: "bookmark",
+                    color: Color.black.opacity(0.08)
+                )
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Baslangic noktasi")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.6))
-
-                    Text(startPointTitle)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.85))
-                }
-
-                if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color(red: 0.58, green: 0.14, blue: 0.09))
-                }
-
-                HStack(spacing: 12) {
-                    Button("Sure/Ayet Sec") {
-                        showingStartPointPicker = true
-                    }
-                    .buttonStyle(TilavetSecondaryButtonStyle())
-
-                    Button(viewModel.isTracking ? "Durdur" : "Baslat") {
-                        if viewModel.isTracking {
-                            viewModel.stopTracking()
-                        } else {
-                            Task {
-                                await viewModel.startTracking()
-                            }
-                        }
-                    }
-                    .buttonStyle(TilavetPrimaryButtonStyle())
+                if viewModel.settingsStore.useSimulatedRecitation {
+                    StatusPill(
+                        title: "Simulasyon",
+                        icon: "sparkles",
+                        color: Color.orange.opacity(0.18)
+                    )
                 }
             }
+
+            Text(viewModel.statusMessage)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.62))
+                .accessibilityIdentifier("Tilavet.StatusMessage")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var teleprompterCard: some View {
+    private var verseStage: some View {
         SurfaceCard {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(viewModel.statusMessage)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.72))
-                        Text("Son transcript: \(viewModel.lastTranscript.isEmpty ? "bekleniyor" : viewModel.lastTranscript)")
+                        Text(currentLocationTitle)
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.82))
+
+                        Text("Ortam sesini dinler, aktif ayeti ve kelimeyi otomatik bulur.")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.54))
-                            .lineLimit(2)
+                            .foregroundStyle(Color.black.opacity(0.50))
                     }
+
                     Spacer()
+
                     Text(confidenceLabel)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.82))
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.7), in: Capsule())
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.80), in: Capsule())
                 }
 
-                VStack(alignment: .trailing, spacing: 14) {
+                VStack(alignment: .trailing, spacing: 18) {
                     if let previousVerse = viewModel.previousVerse {
-                        VerseBlock(text: attributedVerse(for: previousVerse, highlightedWord: nil, emphasis: .low))
+                        VerseBlock(
+                            text: attributedVerse(
+                                for: previousVerse,
+                                highlightedWord: nil,
+                                emphasis: .low
+                            )
+                        )
                     }
 
                     if let currentVerse = viewModel.currentVerse {
-                        VerseBlock(text: attributedVerse(for: currentVerse, highlightedWord: viewModel.trackingState.wordIndex, emphasis: .high))
+                        VerseBlock(
+                            text: attributedVerse(
+                                for: currentVerse,
+                                highlightedWord: viewModel.trackingState.wordIndex,
+                                emphasis: .high
+                            )
+                        )
                     } else {
                         Text("Mushaf verisi yuklenemedi.")
                             .font(.system(size: 24, weight: .semibold, design: .rounded))
@@ -160,7 +178,13 @@ private struct TrackerDashboardView: View {
                     }
 
                     if let nextVerse = viewModel.nextVerse {
-                        VerseBlock(text: attributedVerse(for: nextVerse, highlightedWord: nil, emphasis: .medium))
+                        VerseBlock(
+                            text: attributedVerse(
+                                for: nextVerse,
+                                highlightedWord: nil,
+                                emphasis: .medium
+                            )
+                        )
                     }
                 }
                 .environment(\.layoutDirection, .rightToLeft)
@@ -168,30 +192,75 @@ private struct TrackerDashboardView: View {
         }
     }
 
-    private var controlsCard: some View {
-        SurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Hizli kontrol")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.85))
-
-                HStack(spacing: 12) {
-                    Button("Onceki Ayet") {
-                        viewModel.jumpToPreviousAyah()
+    private var actionStage: some View {
+        VStack(spacing: 14) {
+            Button {
+                if viewModel.isTracking {
+                    viewModel.stopTracking()
+                } else {
+                    Task {
+                        await viewModel.startTracking()
                     }
-                    .buttonStyle(TilavetSecondaryButtonStyle())
-
-                    Button("Ayet Basina Don") {
-                        viewModel.jumpToSelectedStartPoint()
-                    }
-                    .buttonStyle(TilavetSecondaryButtonStyle())
-
-                    Button("Sonraki Ayet") {
-                        viewModel.jumpToNextAyah()
-                    }
-                    .buttonStyle(TilavetSecondaryButtonStyle())
                 }
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: viewModel.isTracking ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .frame(width: 52, height: 52)
+                        .background(Color.white.opacity(0.18), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(viewModel.isTracking ? "Dinlemeyi durdur" : "Ortami dinle")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                        Text(viewModel.isTracking ? "Aktif ayet ve kelimeyi canli izliyor." : "Mikrofondan dinleyip ayeti otomatik bulur.")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.84))
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
             }
+            .buttonStyle(TilavetListenButtonStyle(isActive: viewModel.isTracking))
+            .accessibilityIdentifier("Tilavet.StartStopButton")
+
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color(red: 0.58, green: 0.14, blue: 0.09))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Menu {
+                Button {
+                    viewModel.jumpToPreviousAyah()
+                } label: {
+                    Label("Bir onceki ayete git", systemImage: "backward.fill")
+                }
+                .disabled(viewModel.previousVerse == nil)
+
+                Button {
+                    viewModel.jumpToSelectedStartPoint()
+                } label: {
+                    Label("Baslangic noktasina don", systemImage: "arrow.counterclockwise")
+                }
+
+                Button {
+                    viewModel.jumpToNextAyah()
+                } label: {
+                    Label("Bir sonraki ayete git", systemImage: "forward.fill")
+                }
+                .disabled(viewModel.nextVerse == nil)
+            } label: {
+                Label("Yeniden senkron", systemImage: "slider.horizontal.3")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TilavetTransportButtonStyle())
+            .accessibilityIdentifier("Tilavet.ResyncMenu")
         }
     }
 
@@ -199,22 +268,24 @@ private struct TrackerDashboardView: View {
         SurfaceCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Gelistirici paneli")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.85))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.82))
 
                 debugRow(title: "Model yolu", value: viewModel.debugSnapshot.modelLocation)
                 debugRow(title: "Gecikme", value: "\(Int(viewModel.debugSnapshot.lastLatency * 1000)) ms")
                 debugRow(title: "Pencere", value: viewModel.debugSnapshot.rollingWindowSeconds.formatted(.number.precision(.fractionLength(1))) + " sn")
-                debugRow(title: "Durum", value: viewModel.trackingState.driftState.rawValue)
+                debugRow(title: "Son transcript", value: viewModel.lastTranscript.isEmpty ? "yok" : viewModel.lastTranscript)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Aday ayetler")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
+
                     ForEach(viewModel.debugSnapshot.candidateSummary, id: \.self) { line in
                         Text(line)
                             .font(.system(size: 13, weight: .medium, design: .monospaced))
                             .foregroundStyle(Color.black.opacity(0.72))
                     }
+
                     if viewModel.debugSnapshot.candidateSummary.isEmpty {
                         Text("Aday gelmedi.")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -223,65 +294,55 @@ private struct TrackerDashboardView: View {
                 }
             }
         }
+        .accessibilityIdentifier("Tilavet.DebugPanel")
     }
 
     private func debugRow(title: String, value: String) -> some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             Text(title)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.black.opacity(0.55))
+
             Spacer()
+
             Text(value)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(Color.black.opacity(0.82))
+                .multilineTextAlignment(.trailing)
         }
     }
 
-    private var startPointTitle: String {
+    private var currentLocationTitle: String {
         guard let verse = viewModel.currentVerse else {
             return "Sure \(viewModel.selectedSurahID), Ayet \(viewModel.selectedAyahID)"
         }
-        return "\(verse.transliteration) • \(verse.ayahID)"
-    }
 
-    private var microphoneLabel: String {
-        switch viewModel.permissionState {
-        case .unknown:
-            return "Unknown"
-        case .granted:
-            return "Granted"
-        case .denied:
-            return "Denied"
-        }
-    }
-
-    private var microphoneColor: Color {
-        switch viewModel.permissionState {
-        case .unknown:
-            return .gray
-        case .granted:
-            return .green
-        case .denied:
-            return .red
-        }
-    }
-
-    private var modelColor: Color {
-        switch viewModel.modelState {
-        case .ready:
-            return .green
-        case .loading:
-            return .orange
-        case .idle:
-            return .gray
-        case .unavailable, .failed:
-            return .red
-        }
+        return "\(verse.transliteration) • Ayet \(verse.ayahID)"
     }
 
     private var confidenceLabel: String {
         let percent = Int(viewModel.trackingState.confidence * 100)
         return "Guven \(percent)%"
+    }
+
+    private var listeningTitle: String {
+        if viewModel.isTracking {
+            return "Dinliyor"
+        }
+        if case .loading = viewModel.modelState {
+            return "Hazirlaniyor"
+        }
+        return "Hazir"
+    }
+
+    private var listeningColor: Color {
+        if viewModel.isTracking {
+            return Color.green.opacity(0.20)
+        }
+        if case .loading = viewModel.modelState {
+            return Color.orange.opacity(0.22)
+        }
+        return Color.black.opacity(0.08)
     }
 
     private func attributedVerse(for verse: QuranVerse, highlightedWord: Int?, emphasis: VerseEmphasis) -> AttributedString {
@@ -357,10 +418,72 @@ private struct HistoryView: View {
 private struct SettingsView: View {
     @ObservedObject var viewModel: TrackerViewModel
     @ObservedObject var settingsStore: AppSettingsStore
+    @State private var showDeveloperTools = false
 
     var body: some View {
         Form {
-            Section("Calisma modu") {
+            Section("Takip") {
+                LabeledContent("Model durumu", value: viewModel.modelState.label)
+
+                Text("Tilavet varsayilan olarak dogrudan ortam sesini dinler. Ayet secimi ve yeniden senkron yardimci ozellik olarak kalir.")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+            }
+
+            Section("Tipografi") {
+                Text("Arapca ayetler icin Amiri Quran kullaniyoruz. Bu, yaygin ve lisansi uygun bir mushaf tipi secimi.")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+            }
+
+            Section("Cevrimdisi") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Gercek takip icin donusturulmus whisper-turbo-quran model klasorunu bu yola koyun. Tum ses isleme cihaz uzerinde yapilir, internet gerekmez.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+
+                    Text("Tilavet App/Resources/Models/whisper-turbo-quran")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    Text("Hazir klasor baska bir yerdeyse: Scripts/stage_quran_model.sh /mutlak/model/yolu/whisper-turbo-quran")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Text(appVersionLine)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 5) {
+                        showDeveloperTools = true
+                    }
+            }
+        }
+        .navigationTitle("Ayarlar")
+        .sheet(isPresented: $showDeveloperTools) {
+            NavigationStack {
+                DeveloperToolsView(viewModel: viewModel, settingsStore: settingsStore)
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var appVersionLine: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "Tilavet \(version) (\(build))"
+    }
+}
+
+private struct DeveloperToolsView: View {
+    @ObservedObject var viewModel: TrackerViewModel
+    @ObservedObject var settingsStore: AppSettingsStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Form {
+            Section("Gelistirici") {
                 Toggle("Debug panelini goster", isOn: $settingsStore.showDebugPanel)
                 Toggle("Simulasyon modu", isOn: $settingsStore.useSimulatedRecitation)
             }
@@ -369,13 +492,15 @@ private struct SettingsView: View {
                 LabeledContent("Model durumu", value: viewModel.modelState.label)
                 LabeledContent("Model yolu", value: viewModel.debugSnapshot.modelLocation)
             }
-
-            Section("Not") {
-                Text("Gercek takip icin donusturulmus whisper-turbo-quran model klasorunu app bundle icine ekleyin. Model yoksa simulasyon modu ile UI ve hizalama test edilebilir.")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
+        }
+        .navigationTitle("Gelistirici araclari")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Kapat") {
+                    dismiss()
+                }
             }
         }
-        .navigationTitle("Ayarlar")
     }
 }
 
@@ -395,6 +520,12 @@ private struct StartPointPickerView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Text("Varsayilan akista uygulama dogrudan dinler. Burasi ise istege bagli baslangic noktasi secimi icin.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.68))
+                }
+
                 Section("Sure") {
                     Picker("Sure", selection: $selectedSurahID) {
                         ForEach(viewModel.surahs) { surah in
@@ -419,6 +550,7 @@ private struct StartPointPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Kapat") { dismiss() }
+                        .accessibilityIdentifier("Tilavet.StartPointCloseButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Uygula") {
@@ -426,6 +558,7 @@ private struct StartPointPickerView: View {
                         viewModel.updateSelectedAyah(selectedAyahID)
                         dismiss()
                     }
+                    .accessibilityIdentifier("Tilavet.StartPointApplyButton")
                 }
             }
             .onChange(of: selectedSurahID) { _, newValue in
@@ -433,6 +566,7 @@ private struct StartPointPickerView: View {
                 selectedAyahID = min(selectedAyahID, maxAyah)
             }
         }
+        .accessibilityIdentifier("Tilavet.StartPointSheet")
     }
 
     private var availableAyahs: [Int] {
@@ -449,10 +583,10 @@ private struct SurfaceCard<Content: View>: View {
             content
         }
         .padding(18)
-        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.white.opacity(0.55), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: 10)
     }
@@ -465,51 +599,53 @@ private struct VerseBlock: View {
         Text(text)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .multilineTextAlignment(.trailing)
-            .lineSpacing(10)
+            .lineSpacing(16)
     }
 }
 
-private struct StatusChip: View {
+private struct StatusPill: View {
     let title: String
-    let value: String
+    let icon: String
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.45))
-            Text(value)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.82))
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
         }
+        .foregroundStyle(Color.black.opacity(0.78))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(color.opacity(0.14), in: Capsule())
+        .background(color, in: Capsule())
     }
 }
 
-private struct TilavetPrimaryButtonStyle: ButtonStyle {
+private struct TilavetListenButtonStyle: ButtonStyle {
+    let isActive: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .background(
+                (isActive ? Color(red: 0.45, green: 0.17, blue: 0.10) : Color(red: 0.18, green: 0.28, blue: 0.17)),
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+            )
+            .shadow(color: Color.black.opacity(0.12), radius: 16, x: 0, y: 12)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+    }
+}
+
+private struct TilavetTransportButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color(red: 0.33, green: 0.18, blue: 0.07), in: Capsule())
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-    }
-}
-
-private struct TilavetSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundStyle(Color(red: 0.33, green: 0.18, blue: 0.07))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(Color.white.opacity(0.85), in: Capsule())
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.86), in: Capsule())
+            .opacity(configuration.isPressed ? 0.88 : 1)
     }
 }
 
@@ -521,22 +657,22 @@ private enum VerseEmphasis {
     var font: Font {
         switch self {
         case .low:
-            return .system(size: 22, weight: .medium, design: .rounded)
+            return .tilavetQuran(size: 28)
         case .medium:
-            return .system(size: 24, weight: .semibold, design: .rounded)
+            return .tilavetQuran(size: 34)
         case .high:
-            return .system(size: 32, weight: .bold, design: .rounded)
+            return .tilavetQuran(size: 46)
         }
     }
 
     var foregroundColor: Color {
         switch self {
         case .low:
-            return Color.black.opacity(0.42)
+            return Color.black.opacity(0.36)
         case .medium:
             return Color.black.opacity(0.58)
         case .high:
-            return Color.black.opacity(0.88)
+            return Color.black.opacity(0.90)
         }
     }
 }

@@ -19,11 +19,11 @@ final class TrackerViewModel: ObservableObject {
         var label: String {
             switch self {
             case .idle:
-                return "Model idle"
+                return "Model beklemede"
             case .loading:
-                return "Model loading"
+                return "Model hazirlaniyor"
             case .ready:
-                return "Model ready"
+                return "Model hazir"
             case let .unavailable(message):
                 return message
             case let .failed(message):
@@ -43,7 +43,7 @@ final class TrackerViewModel: ObservableObject {
     @Published var permissionState: PermissionState = .unknown
     @Published var modelState: ModelState = .idle
     @Published var isTracking = false
-    @Published var statusMessage = "Ready to start"
+    @Published var statusMessage = "Dinlemeye hazir"
     @Published var lastTranscript = ""
     @Published var debugSnapshot = DebugSnapshot()
     @Published var errorMessage: String?
@@ -106,7 +106,7 @@ final class TrackerViewModel: ObservableObject {
         let granted = await audioService.requestPermission()
         permissionState = granted ? .granted : .denied
         if !granted {
-            errorMessage = "Microphone permission is required for live tracking."
+            errorMessage = "Canli takip icin mikrofon izni gerekli."
         }
     }
 
@@ -129,7 +129,7 @@ final class TrackerViewModel: ObservableObject {
         trackingState = .idle(at: selectedStartPoint)
         updateVerseContext(for: selectedStartPoint)
         sessionStore.saveLastStartPoint(selectedStartPoint)
-        statusMessage = "Start point updated"
+        statusMessage = "Baslangic noktasi guncellendi"
     }
 
     func jumpToPreviousAyah() {
@@ -149,7 +149,7 @@ final class TrackerViewModel: ObservableObject {
     func startTracking() async {
         guard !isTracking else { return }
         errorMessage = nil
-        statusMessage = settingsStore.useSimulatedRecitation ? "Simulation running" : "Preparing microphone"
+        statusMessage = settingsStore.useSimulatedRecitation ? "Simulasyon calisiyor" : "Mikrofon hazirlaniyor"
 
         if !settingsStore.useSimulatedRecitation {
             if permissionState != .granted {
@@ -181,20 +181,26 @@ final class TrackerViewModel: ObservableObject {
                             self.handleTranscriptionChunk(chunk)
                         }
                     }
+                } catch is CancellationError {
                 } catch {
                     await MainActor.run {
                         self.handleRuntimeError(error)
+                        self.stopTracking(endingStatus: nil)
                     }
                 }
             }
-            statusMessage = "Listening for recitation"
+            statusMessage = "Tilavet dinleniyor"
         } catch {
             handleRuntimeError(error)
-            finishSession()
+            finishSession(endingStatus: nil)
         }
     }
 
     func stopTracking() {
+        stopTracking(endingStatus: "Takip durduruldu")
+    }
+
+    private func stopTracking(endingStatus: String?) {
         transcriptionTask?.cancel()
         transcriptionTask = nil
         sessionEventsTask?.cancel()
@@ -203,7 +209,7 @@ final class TrackerViewModel: ObservableObject {
         demoTask = nil
         recitationEngine.stop()
         audioService.stop()
-        finishSession()
+        finishSession(endingStatus: endingStatus)
     }
 
     private func prepareModelIfNeeded() async {
@@ -241,11 +247,11 @@ final class TrackerViewModel: ObservableObject {
     private func handleAudioSessionEvent(_ event: AudioSessionEvent) {
         switch event {
         case .interruptionBegan:
-            statusMessage = "Audio interruption detected"
+            statusMessage = "Ses kesintisi algilandi"
         case .interruptionEnded:
-            statusMessage = "Audio interruption ended"
+            statusMessage = "Ses kesintisi bitti"
         case .routeChanged:
-            statusMessage = "Audio route changed"
+            statusMessage = "Ses girisi degisti"
         }
     }
 
@@ -261,7 +267,7 @@ final class TrackerViewModel: ObservableObject {
         lastTranscript = ""
     }
 
-    private func finishSession() {
+    private func finishSession(endingStatus: String?) {
         guard isTracking else { return }
 
         if let sessionStartedAt {
@@ -281,7 +287,9 @@ final class TrackerViewModel: ObservableObject {
 
         sessionStartedAt = nil
         isTracking = false
-        statusMessage = "Tracking stopped"
+        if let endingStatus {
+            statusMessage = endingStatus
+        }
     }
 
     private func startDemoLoop() {
@@ -354,7 +362,7 @@ final class TrackerViewModel: ObservableObject {
                 updatedAt: .now
             )
         }
-        statusMessage = "Runtime issue detected"
+        statusMessage = "Bir calisma sorunu olustu"
     }
 
     private func updateVerseContext(for startPoint: QuranStartPoint) {
@@ -366,15 +374,15 @@ final class TrackerViewModel: ObservableObject {
     private func statusLine(for state: TrackingState) -> String {
         switch state.driftState {
         case .idle:
-            return "Waiting for recitation"
+            return "Tilavet bekleniyor"
         case .aligned:
-            return "Tracking is locked"
+            return "Takip sabitlendi"
         case .weakMatch:
-            return "Tracking weakened"
+            return "Takip zayifladi"
         case .resyncing:
-            return "Searching for re-sync"
+            return "Yeniden senkron araniyor"
         case .modelUnavailable:
-            return "Bundled model missing"
+            return "Model klasoru eksik"
         }
     }
 }

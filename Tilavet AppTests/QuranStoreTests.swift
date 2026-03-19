@@ -1,6 +1,8 @@
+import Foundation
 import Testing
 @testable import Tilavet_App
 
+@MainActor
 struct QuranStoreTests {
     @Test func loadsOrderedVersesAndNeighbors() throws {
         let store = try LocalQuranStore(payload: Self.payload)

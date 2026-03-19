@@ -1,6 +1,8 @@
+import Foundation
 import Testing
 @testable import Tilavet_App
 
+@MainActor
 struct QuranAlignmentServiceTests {
     @Test func keepsCurrentAyahWhenTranscriptMatchesAnchor() throws {
         let store = try LocalQuranStore(payload: Self.payload)
@@ -52,6 +54,28 @@ struct QuranAlignmentServiceTests {
 
         #expect(first.ayahID == 1)
         #expect(second.ayahID == 2)
+    }
+
+    @Test func weakTranscriptFallsIntoResyncState() throws {
+        let store = try LocalQuranStore(payload: Self.payload)
+        let service = QuranAlignmentService(
+            quranStore: store,
+            initialStartPoint: QuranStartPoint(surahID: 1, ayahID: 2)
+        )
+
+        let state = service.update(
+            transcriptChunk: TranscriptionChunk(
+                text: "كلمه بعيده تماما",
+                isFinal: false,
+                latency: 0.2,
+                audioDuration: 1.2,
+                capturedAt: .now
+            )
+        )
+
+        #expect(state.ayahID == 2)
+        #expect(state.driftState == .resyncing)
+        #expect(state.confidence < 0.75)
     }
 }
 

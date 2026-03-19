@@ -21,11 +21,11 @@ enum RecitationEngineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .whisperKitUnavailable:
-            return "WhisperKit is not linked into this build yet."
+            return "Bu build icine WhisperKit henuz baglanmadi."
         case .modelBundleMissing:
-            return "Bundled Quran Whisper model was not found in the app resources."
+            return "Donusturulmus Kuran modeli uygulama kaynaklarinda bulunamadi."
         case .notLoaded:
-            return "The recitation engine has not loaded a model yet."
+            return "Tilavet motoru henuz bir model yuklemedi."
         case let .transcriptionFailed(message):
             return message
         }
@@ -49,10 +49,11 @@ final class WhisperRecitationEngine: RecitationEngineProtocol {
     }
 
     var modelLocationDescription: String {
-        locator.cachedPath ?? "Bundled model not found"
+        (try? locator.locate().path) ?? "Model klasoru bulunamadi"
     }
 
     func loadModel() async throws {
+        lastText = ""
         let modelURL = try locator.locate()
 
         #if canImport(WhisperKit)
@@ -80,7 +81,8 @@ final class WhisperRecitationEngine: RecitationEngineProtocol {
     }
 
     func startStreaming(frames: AsyncStream<AudioFrame>) -> AsyncThrowingStream<TranscriptionChunk, Error> {
-        AsyncThrowingStream { continuation in
+        lastText = ""
+        return AsyncThrowingStream { continuation in
             streamTask?.cancel()
             streamTask = Task {
                 do {
@@ -96,6 +98,7 @@ final class WhisperRecitationEngine: RecitationEngineProtocol {
     func stop() {
         streamTask?.cancel()
         streamTask = nil
+        lastText = ""
     }
 
     private func runStreamingLoop(
@@ -172,6 +175,13 @@ final class WhisperRecitationEngine: RecitationEngineProtocol {
 private final class ModelBundleLocator {
     private let bundle: Bundle
     private(set) var cachedPath: String?
+    private let requiredArtifacts = [
+        "AudioEncoder.mlmodelc",
+        "TextDecoder.mlmodelc",
+        "MelSpectrogram.mlmodelc",
+        "config.json",
+        "tokenizer.json"
+    ]
 
     init(bundle: Bundle) {
         self.bundle = bundle
@@ -189,20 +199,25 @@ private final class ModelBundleLocator {
         ].compactMap { $0 }
 
         for root in candidateRoots {
+            if isModelRoot(root, fileManager: fileManager) {
+                cachedPath = root.path
+                return root
+            }
+
             let directCandidates = [
                 root.appendingPathComponent("whisper-turbo-quran", isDirectory: true),
                 root.appendingPathComponent("Models/whisper-turbo-quran", isDirectory: true),
                 root.appendingPathComponent("Resources/Models/whisper-turbo-quran", isDirectory: true)
             ]
 
-            for candidate in directCandidates where fileManager.fileExists(atPath: candidate.path) {
+            for candidate in directCandidates where isModelRoot(candidate, fileManager: fileManager) {
                 cachedPath = candidate.path
                 return candidate
             }
 
             if let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in enumerator {
-                    if url.lastPathComponent == "whisper-turbo-quran" {
+                    if url.lastPathComponent == "whisper-turbo-quran", isModelRoot(url, fileManager: fileManager) {
                         cachedPath = url.path
                         return url
                     }
@@ -211,5 +226,11 @@ private final class ModelBundleLocator {
         }
 
         throw RecitationEngineError.modelBundleMissing
+    }
+
+    private func isModelRoot(_ url: URL, fileManager: FileManager) -> Bool {
+        requiredArtifacts.allSatisfy { artifact in
+            fileManager.fileExists(atPath: url.appendingPathComponent(artifact).path)
+        }
     }
 }

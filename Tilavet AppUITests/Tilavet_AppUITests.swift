@@ -23,19 +23,36 @@ final class Tilavet_AppUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testStartsInSimulationModeAndShowsDebugPanel() throws {
         let app = XCUIApplication()
+        app.launchArguments = [
+            "-tilavet-reset-defaults",
+            "-tilavet-simulated-recitation",
+            "-tilavet-show-debug"
+        ]
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(app.staticTexts["Tilavet.Header"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Tilavet.StartStopButton"].exists)
+        XCTAssertTrue(app.otherElements["Tilavet.DebugPanel"].exists)
+
+        app.buttons["Tilavet.StartStopButton"].tap()
+        XCTAssertTrue(app.staticTexts["Tilavet.StatusMessage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Simulasyon calisiyor"].waitForExistence(timeout: 2) || app.staticTexts["Takip sabitlendi"].waitForExistence(timeout: 3))
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testCanOpenStartPointPicker() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-tilavet-reset-defaults",
+            "-tilavet-simulated-recitation"
+        ]
+        app.launch()
+
+        app.buttons["Tilavet.MoreMenu"].tap()
+        app.buttons["Ayet sec"].tap()
+        XCTAssertTrue(app.otherElements["Tilavet.StartPointSheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Tilavet.StartPointApplyButton"].exists)
     }
 }

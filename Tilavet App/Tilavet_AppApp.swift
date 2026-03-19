@@ -13,6 +13,7 @@ struct Tilavet_AppApp: App {
     @StateObject private var viewModel: TrackerViewModel
 
     init() {
+        AppFontRegistrar.registerBundledFonts()
         let settingsStore = AppSettingsStore()
         let quranStore = AppBootstrap.makeQuranStore()
         let sessionStore = SessionStore()

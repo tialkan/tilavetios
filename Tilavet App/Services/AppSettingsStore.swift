@@ -16,11 +16,30 @@ final class AppSettingsStore: ObservableObject {
         static let useSimulatedRecitation = "tilavet.useSimulatedRecitation"
     }
 
+    private enum LaunchArgument {
+        static let resetDefaults = "-tilavet-reset-defaults"
+        static let showDebugPanel = "-tilavet-show-debug"
+        static let simulateRecitation = "-tilavet-simulated-recitation"
+    }
+
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, processInfo: ProcessInfo = .processInfo) {
         self.defaults = defaults
-        showDebugPanel = defaults.object(forKey: Keys.showDebugPanel) as? Bool ?? true
-        useSimulatedRecitation = defaults.object(forKey: Keys.useSimulatedRecitation) as? Bool ?? true
+
+        if processInfo.arguments.contains(LaunchArgument.resetDefaults) {
+            defaults.removeObject(forKey: Keys.showDebugPanel)
+            defaults.removeObject(forKey: Keys.useSimulatedRecitation)
+        }
+
+        showDebugPanel = defaults.object(forKey: Keys.showDebugPanel) as? Bool ?? false
+        useSimulatedRecitation = defaults.object(forKey: Keys.useSimulatedRecitation) as? Bool ?? false
+
+        if processInfo.arguments.contains(LaunchArgument.showDebugPanel) {
+            showDebugPanel = true
+        }
+        if processInfo.arguments.contains(LaunchArgument.simulateRecitation) {
+            useSimulatedRecitation = true
+        }
     }
 }
